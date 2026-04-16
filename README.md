@@ -55,18 +55,21 @@ python frontend.py
 
 ---
 
-## 📂 Bulk Processing (existing resumes)
+## 📂 Bulk Processing (Folder Analysis)
 
-If you have a folder of resumes (e.g., 300+ files), use the bulk processor to ingest them into the system:
+The system supports analyzing resumes in bulk from a local directory. This is ideal if you have hundreds of resumes to process at once.
 
 ```bash
-python bulk_processor.py --path "/path/to/resumes" --delay 2
+# Run the bulk processor on a folder
+python bulk_processor.py --path "/path/to/resumes/folder" --delay 2
 ```
-This script will:
-1. Walk through the directory.
-2. Extract student identity automatically from each file.
-3. Score candidates based on entrepreneurial and technical merit.
-4. Populate the HR dashboard for easy segregation.
+
+**What this does:**
+1. **Scans the directory** for PDF, DOCX, and image files.
+2. **Auto-extracts identity** (Name, Email, etc.) using AI OCR.
+3. **Applies high-rigor scoring** based on the same criteria as the web portal.
+4. **Saves results to MongoDB**, making them immediately available in the HR Dashboard.
+
 
 ---
 
