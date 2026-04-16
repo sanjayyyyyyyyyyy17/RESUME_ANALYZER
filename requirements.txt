@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+google-genai
+dash
+dash-bootstrap-components
+requests
+pymongo
+python-docx
