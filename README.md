@@ -1,162 +1,87 @@
-# 🤖 AI Resume Analyzer
+# 🤖 AI Resume Platform
 
-An AI-powered resume analysis API built with **FastAPI** and **Google Gemini (gemini-1.5-flash)**. Upload a resume (PDF or image) and get back a structured JSON score with strengths, weak areas, and a final verdict — tailored for university internship screening focused on entrepreneurship and innovation.
+A full-stack AI resume analysis platform built with **FastAPI**, **Dash**, and **Google Gemini (gemini-flash-latest)**. It automates the evaluation of resumes, extracts student identity data, and provides an HR dashboard for candidate segregation and decision-making.
 
 ---
 
 ## ✨ Features
 
-- Accepts **PDF, JPG, JPEG, PNG** resume uploads
-- Two-step Gemini pipeline: **OCR extraction → structured analysis**
-- Returns a JSON score breakdown across 6 categories
-- Student-friendly, moderately lenient scoring
-- Clear error responses for unsupported files or API issues
+- **Multi-modal Analysis**: Process **PDF, DOCX, JPG, PNG** resumes.
+- **Auto Identity Extraction**: Gemini automatically extracts student **Name, Email, College, and Phone** from the resume.
+- **Two-step Gemini Pipeline**: OCR extraction followed by structured innovation-focused scoring.
+- **HR Dashboard**: A Dash-based interface to filter, review, and approve/reject candidates.
+- **Bulk Processor**: A CLI utility to process hundreds of existing resumes from a directory.
+- **MongoDB Persistence**: All submissions and AI results are stored for tracking.
 
 ---
 
-## 🔑 Getting a Gemini API Key
+## 🔑 Getting Started
 
+### 1. Gemini API Key
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Sign in with your Google account
-3. Click **"Create API Key"**
-4. Copy your key — you'll need it in the next step
+2. Create and copy your API Key.
 
----
-
-## ⚙️ Setup Instructions
-
-### 1. Clone / navigate to the project
-
+### 2. Setup
 ```bash
+git clone <repo-url>
 cd RESUME_ANALYSER
-```
 
-### 2. Create and activate a virtual environment (recommended)
-
-```bash
+# Create and activate venv
 python3 -m venv venv
-source venv/bin/activate        # macOS / Linux
-# venv\Scripts\activate         # Windows
-```
+source venv/bin/activate
 
-### 3. Install dependencies
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### 4. Configure environment variables
-
-```bash
+# Configure environment
 cp .env.example .env
+# Edit .env and add your GEMINI_API_KEY
 ```
 
-Open `.env` and replace the placeholder with your real key:
+### 3. Running the App
+The platform consists of a backend and a frontend:
 
-```
-GEMINI_API_KEY=your_actual_gemini_api_key_here
-```
-
----
-
-## 🚀 Running the Server
-
+**Backend (API):**
 ```bash
 uvicorn main:app --reload
 ```
+*API docs available at `http://127.0.0.1:8000/docs`*
 
-The API will be available at: **http://127.0.0.1:8000**
-
-Interactive docs (Swagger UI): **http://127.0.0.1:8000/docs**
-
----
-
-## 📡 API Endpoints
-
-### `GET /`
-Health check — returns `{"status": "ok"}`.
-
-### `POST /analyze`
-Upload a resume file and receive a structured analysis.
-
-**Accepted file types:** `application/pdf`, `image/jpeg`, `image/png`
+**Frontend (Dashboard):**
+```bash
+python frontend.py
+```
+*Portals available at `http://127.0.0.1:8050`*
 
 ---
 
-## 🧪 Sample cURL Command
+## 📂 Bulk Processing (existing resumes)
+
+If you have a folder of resumes (e.g., 300+ files), use the bulk processor to ingest them into the system:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/analyze" \
-  -H "accept: application/json" \
-  -F "file=@/path/to/your/resume.pdf"
+python bulk_processor.py --path "/path/to/resumes" --delay 2
 ```
-
-Replace `/path/to/your/resume.pdf` with the actual path to your file.
+This script will:
+1. Walk through the directory.
+2. Extract student identity automatically from each file.
+3. Score candidates based on entrepreneurial and technical merit.
+4. Populate the HR dashboard for easy segregation.
 
 ---
 
-## 📤 Sample Response
+## 📡 Portals
 
-```json
-{
-  "overall_score": 82,
-  "breakdown": {
-    "technical_skills": { "score": 26, "max": 30 },
-    "projects":         { "score": 21, "max": 25 },
-    "innovation":       { "score": 16, "max": 20 },
-    "experience_academics": { "score": 9, "max": 10 },
-    "resume_clarity":   { "score": 7,  "max": 10 },
-    "leadership":       { "score": 3,  "max": 5  }
-  },
-  "strengths": [
-    "Strong hands-on project portfolio",
-    "Experience with modern ML frameworks",
-    "Clear evidence of product thinking"
-  ],
-  "weak_areas": [
-    "Limited leadership or team initiative examples",
-    "Could highlight entrepreneurial projects more explicitly"
-  ],
-  "selection_chances": "High",
-  "selection_reason": "Strong technical execution with demonstrated product-building ability.",
-  "final_verdict": "This candidate shows real technical depth and a portfolio of shipped projects. With some emphasis on entrepreneurial framing, they would be an excellent fit for an innovation-focused internship."
-}
-```
-
----
-
-## ❌ Error Response
-
-```json
-{
-  "error": "Unsupported file type 'application/msword'. Accepted formats: PDF, JPG, JPEG, PNG."
-}
-```
-
----
-
-## 📁 Project Structure
-
-```
-RESUME_ANALYSER/
-├── main.py           # FastAPI application & Gemini pipeline
-├── .env              # Your secret API key (never commit this)
-├── .env.example      # Template for environment variables
-├── requirements.txt  # Python dependencies
-├── .gitignore        # Ignores .env and artifacts
-└── README.md         # This file
-```
+- **Student Portal (`/`)**: Upload resume and fill personal details.
+- **Check Result (`/student-result`)**: Check AI decision using Submission ID.
+- **HR Dashboard (`/hr`)**: View all candidates, filter by status, and override AI decisions.
 
 ---
 
 ## 🛠 Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Web framework | FastAPI |
-| ASGI server | Uvicorn |
-| AI model | Google Gemini 1.5 Flash |
-| AI SDK | google-generativeai |
-| File uploads | python-multipart |
-| Env management | python-dotenv |
-# RESUME_ANALYZER
+- **AI Model**: Google Gemini 1.5 Flash
+- **Backend Framework**: FastAPI
+- **Database**: MongoDB (pymongo)
+- **Frontend / HR Dashboard**: Dash (Plotly), Dash Bootstrap Components
+- **OCR & Extraction**: google-genai, python-docx

@@ -108,7 +108,13 @@ Return your response ONLY as a valid JSON object with no extra text. Use this st
   "selection_chances": "Highly Likely / Unlikely / Exceptional",
   "selection_reason": "One line elite justification",
   "recommended_status": "approved",
-  "final_verdict": "3-4 lines of high-level, critical analysis of their potential for world-class impact."
+  "final_verdict": "3-4 lines analysis...",
+  "candidate_identity": {{
+    "name": "Full Name Extract",
+    "email": "Email Extract",
+    "college": "College/University Extract",
+    "phone": "Phone Extract"
+  }}
 }}
 
 Decision Criteria for "recommended_status":
@@ -213,7 +219,64 @@ def _extract_json(raw: str) -> dict:
     )
 
 # ---------------------------------------------------------------------------
+async def process_resume_data(file_bytes: bytes, filename: str, content_type: str, student_metadata: dict = None):
+    """
+    Core pipeline: OCR -> Analysis -> Metadata Consolidation.
+    """
+    mime_type = _resolve_mime(content_type)
+    
+    # Step 1: Extraction
+    if mime_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"]:
+        extracted_text = _extract_text_from_docx(file_bytes)
+    else:
+        resp = client.models.generate_content(
+            model=MODEL,
+            contents=[types.Content(role="user", parts=[
+                types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+                types.Part.from_text(text=EXTRACTION_PROMPT),
+            ])]
+        )
+        extracted_text = resp.text.strip()
+
+    if not extracted_text:
+        raise ValueError("No text extracted from resume.")
+
+    # Step 2: Analysis
+    analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(extracted_text=extracted_text)
+    analysis_resp = client.models.generate_content(
+        model=MODEL,
+        contents=[types.Content(role="user", parts=[types.Part.from_text(text=analysis_prompt)])]
+    )
+    result = _extract_json(analysis_resp.text.strip())
+
+    # Metadata fallback: Use provided data, then fallback to AI extraction
+    identity = result.get("candidate_identity", {})
+    metadata = student_metadata or {}
+    
+    final_doc = {
+        "student_name": metadata.get("student_name") or identity.get("name") or "Unknown Candidate",
+        "student_email": metadata.get("student_email") or identity.get("email") or "unknown@email.com",
+        "phone": metadata.get("phone") or identity.get("phone") or "N/A",
+        "college": metadata.get("college") or identity.get("college") or "N/A",
+        "branch": metadata.get("branch") or "N/A",
+        "year_of_study": metadata.get("year_of_study") or "N/A",
+        "resume_filename": filename,
+        "ai_score": result.get("overall_score", 0),
+        "ai_result": result,
+        "status": result.get("recommended_status", "pending") if result.get("overall_score", 0) >= 85 else "rejected",
+        "hr_remarks": f"AI Evaluation: {result.get('final_verdict', 'No reasoning provided.')}",
+        "submitted_at": datetime.utcnow(),
+    }
+    
+    # Save to DB
+    coll = get_submissions_collection()
+    insert_res = coll.insert_one(final_doc)
+    return str(insert_res.inserted_id), result
+
+
+# ---------------------------------------------------------------------------
 # Routes
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 @app.get("/", tags=["Health"])
@@ -327,6 +390,11 @@ async def analyze_resume(file: UploadFile = File(...)):
         )
 
 
+@app.get("/", tags=["Health"])
+async def root():
+    return {"status": "ok", "message": "Resume Analyzer API is running."}
+
+
 @app.post("/submit", tags=["Student"])
 async def submit_resume(
     student_name: str = Form(...),
@@ -337,82 +405,25 @@ async def submit_resume(
     year_of_study: str = Form(...),
     file: UploadFile = File(...)
 ):
-    """Student submits details and resume, runs OCR and Analysis."""
-    content_type = (file.content_type or "").lower().strip()
-    mime_type = _resolve_mime(content_type)
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-
-    encoded_data = base64.b64encode(file_bytes).decode("utf-8")
-
+    """Refactored submission endpoint."""
     try:
-        if mime_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"]:
-            logger.info("Extracting text from Word document locally …")
-            extracted_text = _extract_text_from_docx(file_bytes)
-            if not extracted_text:
-                raise ValueError("Failed to extract any text from the Word document.")
-        else:
-            logger.info("Sending file to Gemini for OCR/extraction …")
-            extraction_response = client.models.generate_content(
-                model=MODEL,
-                contents=[types.Content(role="user", parts=[
-                    types.Part.from_bytes(data=base64.b64decode(encoded_data), mime_type=mime_type),
-                    types.Part.from_text(text=EXTRACTION_PROMPT),
-                ])]
-            )
-            extracted_text = extraction_response.text.strip()
-            if not extracted_text:
-                raise ValueError("Gemini returned empty text or failed to OCR.")
-
-        logger.info("Step 1 complete. Extracted %d characters.", len(extracted_text))
-        
-        analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(extracted_text=extracted_text)
-        analysis_response = client.models.generate_content(
-            model=MODEL,
-            contents=[types.Content(role="user", parts=[types.Part.from_text(text=analysis_prompt)])]
-        )
-        result = _extract_json(analysis_response.text.strip())
-
-        # AI Evaluation Automation
-        ai_recommendation = result.get("recommended_status", "pending")
-        if ai_recommendation not in ["approved", "rejected"]:
-            ai_recommendation = "pending"
-            
-        ai_verdict = result.get("final_verdict", "No additional AI reasoning provided.")
-
-        doc = {
+        file_bytes = await file.read()
+        metadata = {
             "student_name": student_name,
             "student_email": student_email,
             "phone": phone,
             "college": college,
             "branch": branch,
-            "year_of_study": year_of_study,
-            "resume_filename": file.filename,
-            "ai_score": result.get("overall_score", 0),
-            "ai_result": result,
-            "status": ai_recommendation,
-            "hr_remarks": f"AI Evaluation: {ai_verdict}",
-            "submitted_at": datetime.utcnow(),
-            "reviewed_at": datetime.utcnow() if ai_recommendation != "pending" else None
+            "year_of_study": year_of_study
         }
-
-        coll = get_submissions_collection()
-        insert_res = coll.insert_one(doc)
+        sub_id, result = await process_resume_data(
+            file_bytes, file.filename, file.content_type, metadata
+        )
+        return {"submission_id": sub_id, "ai_result": result}
         
-        return {"submission_id": str(insert_res.inserted_id), "ai_result": result}
-        
-    except errors.APIError as exc:
-        logger.error("Gemini API error: %s", exc)
-        status_code = 500
-        if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
-            status_code = 429
-        elif "403" in str(exc):
-            status_code = 403
-        raise HTTPException(status_code=status_code, detail=f"Gemini API error: {str(exc)}")
     except Exception as exc:
-        logger.exception("Unexpected error during pipeline.")
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(exc)}")
+        logger.exception("Submission failed")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/student/result/{submission_id}", tags=["Student"])
